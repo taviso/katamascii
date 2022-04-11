@@ -121,7 +121,12 @@ sprite_t *sprite_new_circle_full(cpSpace *space,
     fradius = radius ? radius : 0.5f;
 
     // Create the physics object.
+    // XXX: FIXME, this isn't working in chipmunk 7?
+#if CP_VERSION_MAJOR < 7
     moment = cpMomentForCircle(mass, 0, fradius, cpvzero);
+#else
+    moment = cpMomentForCircle(INFINITY, 0, fradius, cpvzero);
+#endif
     sprite->body  = cpBodyNew(mass, moment);
     sprite->shape = cpCircleShapeNew(sprite->body, fradius, cpvzero);
 
@@ -487,6 +492,20 @@ void sprite_refresh(sprite_t *sprite)
     dmaxrow = MIN(getmaxy(stdscr) - bb.b, getmaxy(stdscr) - 1);
     dmaxcol = CLAMP(ttypx(bb.r), ttypx(bb.l), getmaxx(stdscr) - 1);
 
+    if (dmincol < 0) {
+        smincol -= dmincol;
+        dmincol = 0;
+    }
+
+    dmaxcol = CLAMP(dmaxcol, dmincol, dmincol + (getmaxx(sprite->win) - smincol - 1));
+
+    if (dminrow < 0) {
+        sminrow -= dminrow;
+        dminrow = 0;
+    }
+
+    dmaxrow = CLAMP(dmaxrow, dminrow, dminrow + (getmaxy(sprite->win) - sminrow - 1));
+
     // This copies the sprite into strscr.
     ret = copywin(sprite->win,
                   stdscr,
@@ -499,7 +518,11 @@ void sprite_refresh(sprite_t *sprite)
                   true);
 
     if (copywin != OK) {
-        g_debug("copywin for %s failed, %d %d %d %d", sprite->shortname, dminrow, dmincol, dmaxrow, dmaxcol);
+        g_debug("copywin for %s failed, %d %d %d %d", sprite->shortname,
+                                                      dminrow,
+                                                      dmincol,
+                                                      dmaxrow,
+                                                      dmaxcol);
     }
     return;
 }

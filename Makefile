@@ -17,5 +17,6 @@ clean:
 	rm -f *.o *.core katamascii
 	rm -f debug.log
 	rm -f valgrind.out
+	rm -f valgrind.out.*
 	make -C art clean
 	make -C tiles clean

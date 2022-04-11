@@ -5,6 +5,7 @@
 #include <chipmunk.h>
 #include <glib.h>
 
+#include "compat.h"
 #include "sprite.h"
 
 // TODO:
@@ -27,17 +28,19 @@ static int collision_begin(cpArbiter *arb, struct cpSpace *space, cpDataPointer 
     spritea = cpBodyGetUserData(bodya);
     spriteb = cpBodyGetUserData(bodyb);
 
-    if (!spritea || !spriteb) {
-        return true;
-    }
-    if (strcmp(spritea->shortname, "backdrop") == 0)
+    // All bodies should have a sprite?
+    g_return_val_if_fail(spritea, true);
+    g_return_val_if_fail(spriteb, true);
+
+    // Background or decorative sprites.
+    if (spritea->flags & SPRITE_FLAG_NOCLIP)
         return false;
-    if (strcmp(spriteb->shortname, "backdrop") == 0)
+    if (spriteb->flags & SPRITE_FLAG_NOCLIP)
         return false;
 
-    mvwprintw(stdscr, 2, 0, "collission %s => %s", spritea->shortname, spriteb->shortname);
-    wrefresh(stdscr);
+    g_debug("collission %s => %s", spritea->shortname, spriteb->shortname);
 
+    // Experimenting with death animations...
     if (strcmp(spritea->shortname, "coin") == 0) {
         if (strcmp(spriteb->shortname, "player") == 0) {
             sprite_set_bg(spritea, "art/coin2.raw");
@@ -99,8 +102,8 @@ int main(int argc, char **argv)
                                                  -12);
         sprite_background(backdrop);
         sprite_set_bg(backdrop, "tiles/city.utf");
-        // This should be a flag, not a name.
         sprite_set_name(backdrop, "backdrop");
+        backdrop->flags |= SPRITE_FLAG_NOCLIP;
         backdrops = g_slist_append(backdrops, backdrop);
     }
 
@@ -144,9 +147,11 @@ int main(int argc, char **argv)
         // Learn position;
         bb = cpShapeCacheBB(player->shape);
 
-        mvwprintw(stdscr, 0, 0, "player@(%f,%f) %svisible", bb.t, bb.l, sprite_visible(player) ? "" : "in");
+        mvwprintw(stdscr, 0, 0, "player@(%f,%f) %svisible",
+                                bb.t,
+                                bb.l,
+                                sprite_visible(player) ? "" : "in");
         mvwprintw(stdscr, 1, 0, "camera@(%f,%f)", camera.x, camera.y);
-        mvwprintw(stdscr, 2, 0, "player %dx%d", caca_get_canvas_width(player->cv), caca_get_canvas_height(player->cv));
 
         wrefresh(stdscr);
 

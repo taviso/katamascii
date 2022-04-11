@@ -1,4 +1,6 @@
 syntax: glob
 *.utf
 *.o
+.*.sw?
 katamascii
+debug.log

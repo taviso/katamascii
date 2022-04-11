@@ -4,7 +4,8 @@
 extern cpVect camera;
 
 enum {
-    SPRITE_FLAG_DYING   = 1 << 0,
+    SPRITE_FLAG_DYING       = 1 << 0,
+    SPRITE_FLAG_NOCLIP      = 1 << 1,
 };
 
 typedef struct {
