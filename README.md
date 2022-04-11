@@ -1,7 +1,5 @@
 # Katamascii
 
-*[WIP]: Work In Progress
-
 This is a WIP prototype for a terminal puzzle game where you roll around collecting
 ASCII art objects. Like the beloved video game Katamari Damacy, but entirely
 in your terminal window.
