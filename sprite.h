@@ -48,8 +48,12 @@ void sprite_refresh(sprite_t *sprite);
 
 void sprite_anchor(sprite_t *sprite, cpSpace *space);
 
+// Mark this sprite as decorative, it shouldnt interact with
+// other objects.
 void sprite_background(sprite_t *sprite);
 
+// Load the specified ascii art file and draw it to the sprite.
+// You can still write to or modify the canvas afterwards.
 void sprite_set_bg(sprite_t *sprite, const char *filename);
 
 void canvas_display_window(caca_canvas_t *cv, WINDOW *win);

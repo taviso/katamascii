@@ -103,7 +103,6 @@ int main(int argc, char **argv)
         sprite_background(backdrop);
         sprite_set_bg(backdrop, "tiles/city.utf");
         sprite_set_name(backdrop, "backdrop");
-        backdrop->flags |= SPRITE_FLAG_NOCLIP;
         backdrops = g_slist_append(backdrops, backdrop);
     }
 

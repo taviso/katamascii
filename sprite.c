@@ -315,6 +315,9 @@ void sprite_background(sprite_t *sprite)
     g_return_if_fail(space);
     g_return_if_fail(cpSpaceContainsBody(space, sprite->body));
     cpSpaceRemoveBody(space, sprite->body);
+
+    // Don't interact with other objects.
+    sprite->flags |= SPRITE_FLAG_NOCLIP;
 }
 
 void sprite_destroy(sprite_t *sprite)
