@@ -11,8 +11,8 @@ static inline cpVect cpBBCenter(cpBB bb)
 #if CP_VERSION_MAJOR > 6
 
 #define cpBodySetPos cpBodySetPosition
-#define cpBoxShapeNew2(body, box) cpBoxShapeNew2((body), (box), 1)
-#define cpMomentForSegment(m, a, b) cpMomentForSegment((m), (a), (b), 1)
+#define cpBoxShapeNew2(body, box) cpBoxShapeNew2((body), (box), 0.0)
+#define cpMomentForSegment(m, a, b) cpMomentForSegment((m), (a), (b), 0.0)
 #define cpBodyApplyImpulse cpBodyApplyImpulseAtLocalPoint
 
 #define cpSpaceSetDefaultCollisionHandler(s, b, pre, post, sep, u) do { \
