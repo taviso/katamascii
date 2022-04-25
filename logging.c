@@ -15,7 +15,7 @@ static void __attribute__((constructor)) init_debug_log()
 {
     logfile = fopen("debug.log", "w");
 
-    g_log_set_handler(NULL, G_LOG_LEVEL_DEBUG, debug_log_handler, NULL);
+    g_log_set_handler(NULL, G_LOG_LEVEL_MASK | G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION, debug_log_handler, NULL);
 }
 
 static void __attribute__((destructor)) fini_debug_log()

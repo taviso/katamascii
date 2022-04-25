@@ -2,13 +2,20 @@
 #define __SPRITE_H
 
 extern cpVect camera;
+extern const float kPixelRatio;
 
 enum {
     SPRITE_FLAG_DYING       = 1 << 0,
     SPRITE_FLAG_NOCLIP      = 1 << 1,
+    SPRITE_FLAG_ROTATES     = 1 << 2,
+    SPRITE_FLAG_DESPAWN     = 1 << 3,
 };
 
-typedef struct {
+enum {
+    SPRITE_ID_PLAYER,
+};
+
+typedef struct _sprite {
     caca_canvas_t   *cv;
     WINDOW          *win;
     cpShape         *shape;
@@ -16,23 +23,34 @@ typedef struct {
     char             shortname[8];
     uint32_t        type;
     uint32_t        flags;
+    uint16_t        layer;
+    gpointer        user;
+    struct {
+        struct {
+            GSList *begin;
+            GSList *presolve;
+            GSList *postsolve;
+            GSList *separate;
+        } collision;
+        GSList *update;
+        GSList *destroy;
+    } callbacks;
 } sprite_t;
 
-sprite_t *sprite_new_circle_full(cpSpace *space,
-                                 int radius,
+typedef int (*spritecb_t)(sprite_t *, sprite_t *, gpointer);
+
+sprite_t *sprite_new_circle_full(int radius,
                                  int mass,
                                  int x,
                                  int y);
 
-sprite_t *sprite_new_box_full(cpSpace *space,
-                              int mass,
+sprite_t *sprite_new_box_full(int mass,
                               int width,
                               int height,
                               int x,
                               int y);
 
-sprite_t *sprite_new_line_full(cpSpace *space,
-                               int mass,
+sprite_t *sprite_new_line_full(int mass,
                                int x1,
                                int y1,
                                int x2,
@@ -46,7 +64,7 @@ void sprite_redraw_rotated(sprite_t *sprite);
 
 void sprite_refresh(sprite_t *sprite);
 
-void sprite_anchor(sprite_t *sprite, cpSpace *space);
+void sprite_anchor(sprite_t *sprite);
 
 // Mark this sprite as decorative, it shouldnt interact with
 // other objects.
@@ -58,7 +76,7 @@ void sprite_set_bg(sprite_t *sprite, const char *filename);
 
 void canvas_display_window(caca_canvas_t *cv, WINDOW *win);
 
-void sprite_init();
+void sprite_init(cpSpace *space, WINDOW *window);
 
 void sprite_fini();
 
@@ -77,9 +95,23 @@ void sprite_center_camera(sprite_t *sprite);
 void sprite_set_name(sprite_t *sprite, const char *name);
 
 // Find all the sprites in the specified space and update their status.
-void space_update_sprites(cpSpace *space);
+void space_update_sprites();
 
 // Check if a sprite is dead, i.e. is dying and death animation is complete.
 bool sprite_is_dead(sprite_t *sprite);
+
+static inline int ttypx(int width)
+{
+    return width * kPixelRatio;
+}
+
+static inline int cmpx(int width)
+{
+    return width / kPixelRatio;
+}
+
+#define sprite_add_callback(s, cb, func) do {                   \
+    s->callbacks.cb = g_slist_append(s->callbacks.cb, func);    \
+} while (false)
 
 #endif

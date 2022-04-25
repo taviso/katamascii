@@ -7,7 +7,9 @@
 #include "compat.h"
 #include "sprite.h"
 
-static const float kPixelRatio = 2.0f;
+const float kPixelRatio = 2.0f;
+static cpSpace *kSpace;
+static GSList *objects;
 cpVect camera;
 
 // Unfortunately character cells are not square. We need to adjust coordinates
@@ -21,18 +23,17 @@ cpVect camera;
 // Yes, this is a chunky boy, but it's far easier to reason about.
 //
 // XXX I don't know how to do this.
-//
-// I think we need to double widths we get from chipmunk...okay, but for cicles
-// with radii... how do we translate this? I think we need to translate circles
-// into ellipse????
-static inline int ttypx(int width)
+
+static gint sprite_layer_compare(sprite_t *a, sprite_t *b)
 {
-    return width * kPixelRatio;
+    return -1 * (a->layer - b->layer);
 }
 
-static inline int cmpx(int width)
+void sprite_set_layer(sprite_t *sprite, uint32_t layer)
 {
-    return width / kPixelRatio;
+    sprite->layer = layer;
+
+    objects = g_slist_sort(objects, (GCompareFunc) sprite_layer_compare);
 }
 
 void sprite_set_name(sprite_t *sprite, const char *name)
@@ -45,11 +46,11 @@ static void space_count_body(cpBody *body, int *bodycount)
     ++*bodycount;
 }
 
-static int space_count_bodies(cpSpace *space)
+static int space_count_bodies()
 {
     int numbodies = 0;
 
-    cpSpaceEachBody(space,
+    cpSpaceEachBody(kSpace,
                     (cpSpaceBodyIteratorFunc) space_count_body,
                     &numbodies);
 
@@ -73,30 +74,70 @@ static void space_update_body(cpBody *body, cpSpace *space)
         return;
     }
 
-    // If the sprite is dying, it means play out the remaining animation
-    // frames and then remove it.
-    if (sprite->flags & SPRITE_FLAG_DYING) {
-        // Are there any frames remaining?
-        if (caca_get_frame_count(sprite->cv) > 1) {
-            g_debug("dying sprite %s has %u frames remaining",
-                     sprite->shortname,
-                     caca_get_frame_count(sprite->cv));
-            // Yes, just remove the current active frame.
-            caca_free_frame(sprite->cv, 0);
-        } else {
-            // This is already the last frame, schedule the sprite for removal.
-            g_debug("sprite %s has died", sprite->shortname);
-        }
-    }
 }
 
 // Query all bodies and see if they need to change animation
 // or need to be removed, etc, etc.
-void space_update_sprites(cpSpace *space)
+void space_update_sprites()
 {
-    cpSpaceEachBody(space, (cpSpaceBodyIteratorFunc) space_update_body, space);
+    uint32_t dirty = 0;
+
+    // Process each object in space.
+    for (GSList *curr = objects; curr; curr = curr->next) {
+        sprite_t *sprite = curr->data;
+
+        // If the sprite is dying, it means play out the remaining animation
+        // frames and then remove it.
+        if (sprite->flags & SPRITE_FLAG_DYING) {
+
+            // Are there any death frames remaining?
+            if (caca_get_frame_count(sprite->cv) > 1) {
+                g_debug("dying sprite %s has %u frames remaining",
+                         sprite->shortname,
+                         caca_get_frame_count(sprite->cv));
+                // Yes, just remove the current active frame.
+                caca_free_frame(sprite->cv, 0);
+            } else {
+                // This is already the last frame, the sprite is dead.
+                g_debug("sprite %s has died", sprite->shortname);
+
+                // We need a cleanup pass after this.
+                dirty++;
+
+                curr->data = NULL;
+
+                sprite_destroy(sprite);
+
+                continue;
+            }
+        }
+
+        // Call any callbacks registered.
+        for (GSList *c = sprite->callbacks.update; c; c = c->next) {
+            spritecb_t cb = curr->data;
+            cb(sprite, NULL, NULL);
+        }
+
+        // Perform standard updates.
+        sprite_redraw(sprite);
+        sprite_refresh(sprite);
+    }
+
+    if (dirty) {
+        objects = g_slist_remove_all(objects, NULL);
+    }
 }
 
+static sprite_t *sprite_new(void)
+{
+    sprite_t *sprite = g_new0(sprite_t, 1);
+
+    // Add to our private list of all known sprites. This is used
+    // for processing updates, callbacks, and so on.
+    objects = g_slist_append(objects, sprite);
+
+    return sprite;
+}
 // So there are only a few shapes we have to handle.
 //  - lines
 //  - polylines
@@ -106,16 +147,18 @@ void space_update_sprites(cpSpace *space)
 //  - triangles
 //
 // Everything else is just ascii art inside one of those shapes.
-sprite_t *sprite_new_circle_full(cpSpace *space,
-                                 int radius,
+sprite_t *sprite_new_circle_full(int radius,
                                  int mass,
                                  int x,
                                  int y)
 {
     cpFloat fradius;
-    sprite_t *sprite = g_new0(sprite_t, 1);
+    sprite_t *sprite;
     cpFloat moment;
     cpBB bb;
+
+    // Create the new object.
+    sprite = sprite_new();
 
     // The smallest radius we support.
     fradius = radius ? radius : 0.5f;
@@ -138,14 +181,14 @@ sprite_t *sprite_new_circle_full(cpSpace *space,
     cpShapeSetFriction(sprite->shape, 1);
 
     // Insert it into space.
-    cpSpaceAddBody(space, sprite->body);
-    cpSpaceAddShape(space, sprite->shape);
+    cpSpaceAddBody(kSpace, sprite->body);
+    cpSpaceAddShape(kSpace, sprite->shape);
 
     g_debug("new circle %p r=%d -> space@%p (%d bodies)",
             sprite,
             radius,
-            space,
-            space_count_bodies(space));
+            kSpace,
+            space_count_bodies());
 
     // Set the intial position. This is the position
     // of the center of gravity.
@@ -194,14 +237,13 @@ sprite_t *sprite_new_circle_full(cpSpace *space,
     return sprite;
 }
 
-sprite_t *sprite_new_box_full(cpSpace *space,
-                              int mass,
+sprite_t *sprite_new_box_full(int mass,
                               int width,
                               int height,
                               int x,
                               int y)
 {
-    sprite_t *sprite = g_new0(sprite_t, 1);
+    sprite_t *sprite;
     cpFloat moment;
     cpBB bb = {
         .l = x,
@@ -209,6 +251,9 @@ sprite_t *sprite_new_box_full(cpSpace *space,
         .t = getmaxy(stdscr) - (y),
         .r = x + width,
     };
+
+    // Create the new object.
+    sprite = sprite_new();
 
     // Create the physics object.
     // Note: set to INFINITY to disable rotation
@@ -224,8 +269,8 @@ sprite_t *sprite_new_box_full(cpSpace *space,
     cpShapeSetFriction(sprite->shape, 1);
 
     // Insert it into space.
-    cpSpaceAddBody(space, sprite->body);
-    cpSpaceAddShape(space, sprite->shape);
+    cpSpaceAddBody(kSpace, sprite->body);
+    cpSpaceAddShape(kSpace, sprite->shape);
 
     // Create an ncurses WINDOW to contain it.
     sprite->win = newpad(bb.t - bb.b + 1, ttypx(bb.r - bb.l) + 1);
@@ -242,16 +287,18 @@ sprite_t *sprite_new_box_full(cpSpace *space,
     return sprite;
 }
 
-sprite_t *sprite_new_line_full(cpSpace *space,
-                               int mass,
+sprite_t *sprite_new_line_full(int mass,
                                int x1,
                                int y1,
                                int x2,
                                int y2)
 {
-    sprite_t *sprite = g_new0(sprite_t, 1);
+    sprite_t *sprite;
     cpFloat moment;
     cpBB bb;
+
+    // Create the new object.
+    sprite = sprite_new();
 
     // Create the physics object.
     moment = cpMomentForSegment(mass, cpv(1, 1), cpvzero);
@@ -266,8 +313,8 @@ sprite_t *sprite_new_line_full(cpSpace *space,
     cpShapeSetFriction(sprite->shape, 1);
 
     // Insert it into space.
-    cpSpaceAddBody(space, sprite->body);
-    cpSpaceAddShape(space, sprite->shape);
+    cpSpaceAddBody(kSpace, sprite->body);
+    cpSpaceAddShape(kSpace, sprite->shape);
 
     // Determine the object dimensions.
     bb = cpShapeCacheBB(sprite->shape);
@@ -293,16 +340,16 @@ sprite_t *sprite_new_line_full(cpSpace *space,
 }
 
 
-void sprite_anchor(sprite_t *sprite, cpSpace *space)
+void sprite_anchor(sprite_t *sprite)
 {
-    if (cpSpaceContainsBody(space, sprite->body))
-        cpSpaceRemoveBody(space, sprite->body);
-    if (cpSpaceContainsShape(space, sprite->shape))
-        cpSpaceRemoveShape(space, sprite->shape);
+    if (cpSpaceContainsBody(kSpace, sprite->body))
+        cpSpaceRemoveBody(kSpace, sprite->body);
+    if (cpSpaceContainsShape(kSpace, sprite->shape))
+        cpSpaceRemoveShape(kSpace, sprite->shape);
 
-    cpShapeSetBody(sprite->shape, cpSpaceGetStaticBody(space));
+    cpShapeSetBody(sprite->shape, cpSpaceGetStaticBody(kSpace));
 
-    cpSpaceAddShape(space, sprite->shape);
+    cpSpaceAddShape(kSpace, sprite->shape);
 
     cpBodyFree(sprite->body);
 
@@ -311,18 +358,24 @@ void sprite_anchor(sprite_t *sprite, cpSpace *space)
 
 void sprite_background(sprite_t *sprite)
 {
-    cpSpace *space = cpBodyGetSpace(sprite->body);
-    g_return_if_fail(space);
-    g_return_if_fail(cpSpaceContainsBody(space, sprite->body));
-    cpSpaceRemoveBody(space, sprite->body);
+    cpSpace *kSpace = cpBodyGetSpace(sprite->body);
+    g_return_if_fail(kSpace);
+    g_return_if_fail(cpSpaceContainsBody(kSpace, sprite->body));
+    cpSpaceRemoveBody(kSpace, sprite->body);
 
     // Don't interact with other objects.
     sprite->flags |= SPRITE_FLAG_NOCLIP;
+
+    // Always draw first.
+    sprite_set_layer(sprite, UINT16_MAX);
 }
 
 void sprite_destroy(sprite_t *sprite)
 {
     g_return_if_fail(sprite);
+
+    // Remove sprite from object list.
+    objects = g_slist_remove(objects, sprite);
 
     if (sprite->shape) {
         cpSpace *space = cpShapeGetSpace(sprite->shape);
@@ -340,6 +393,12 @@ void sprite_destroy(sprite_t *sprite)
     }
     delwin(sprite->win);
     caca_free_canvas(sprite->cv);
+    g_slist_free(sprite->callbacks.collision.begin);
+    g_slist_free(sprite->callbacks.collision.presolve);
+    g_slist_free(sprite->callbacks.collision.postsolve);
+    g_slist_free(sprite->callbacks.collision.separate);
+    g_slist_free(sprite->callbacks.update);
+    g_slist_free(sprite->callbacks.destroy);
     g_free(sprite);
     return;
 }
@@ -538,10 +597,47 @@ void sprite_set_bg(sprite_t *sprite, const char *filename)
     return;
 }
 
-void sprite_init()
+static int sprite_collision_begin(cpArbiter *arb,
+                                  struct cpSpace *space,
+                                  cpDataPointer data)
 {
-    struct winsize ww;
+    cpBody *bodya, *bodyb;
+    sprite_t *spritea, *spriteb;
 
+    cpArbiterGetBodies(arb, &bodya, &bodyb);
+
+    spritea = cpBodyGetUserData(bodya);
+    spriteb = cpBodyGetUserData(bodyb);
+
+    // All bodies should have a sprite?
+    g_return_val_if_fail(spritea, true);
+    g_return_val_if_fail(spriteb, true);
+
+    // Background or decorative sprites.
+    if (spritea->flags & SPRITE_FLAG_NOCLIP)
+        return false;
+    if (spriteb->flags & SPRITE_FLAG_NOCLIP)
+        return false;
+
+    //g_debug("collission %s => %s", spritea->shortname, spriteb->shortname);
+
+    // If someone has registered callbacks, call them.
+    for (GSList *curr = spritea->callbacks.collision.begin; curr; curr = curr->next) {
+        spritecb_t cb = curr->data;
+        if (cb && cb(spritea, spriteb, arb) == false)
+            return false;
+    }
+    for (GSList *curr = spriteb->callbacks.collision.begin; curr; curr = curr->next) {
+        spritecb_t cb = curr->data;
+        if (cb && cb(spriteb, spritea, arb) == false)
+            return false;
+    }
+
+    return true;
+}
+
+void sprite_init(cpSpace *space, WINDOW *window)
+{
     setlocale(LC_ALL, "");
     initscr();
     start_color();
@@ -550,24 +646,20 @@ void sprite_init()
     noecho();
     curs_set(0);
 
-    // It's possible we can figure it our from the terminal though
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ww) == 0) {
-        // These fields are not always set, even if it succeeds.
-        if (ww.ws_xpixel && ww.ws_ypixel) {
-            float x = ww.ws_xpixel;
-            float y = ww.ws_ypixel;
+    // Setup the default space.
+    kSpace = space;
 
-            // Let's try our best to figure it out...
-            x /= getmaxx(stdscr);
-            y /= getmaxy(stdscr);
-
-            // Check this makes sense...
-            g_warn_if_fail(G_APPROX_VALUE(y / x, kPixelRatio, 0.1f));
-        }
-    }
+    // Install a default collision handler.
+    cpSpaceSetDefaultCollisionHandler(kSpace,
+                                      sprite_collision_begin,
+                                      NULL,
+                                      NULL,
+                                      NULL,
+                                      NULL);
 }
 
 void sprite_fini()
 {
+    g_slist_free_full(objects, (GDestroyNotify) sprite_destroy);
     endwin();
 }
