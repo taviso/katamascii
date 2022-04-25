@@ -143,7 +143,7 @@ void convert_object_magic_dust(cpSpace *space, sprite_t *object, void *data)
                 }
 
                 // The particules should gravitate towards the player.
-                particle->body->velocity_func = particle_velocity_func;
+                cpBodySetVelocityUpdateFunc(particle->body, particle_velocity_func);
             }
         }
     }

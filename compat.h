@@ -6,11 +6,17 @@ static inline cpVect cpBBCenter(cpBB bb)
 {
     return cpvlerp(cpv(bb.l, bb.b), cpv(bb.r, bb.t), 0.5f);
 }
+
+#define cpBodySetVelocityUpdateFunc(b, f) do {                          \
+    (b)->velocity_func = (f);                                           \
+} while (false)
+
 #endif
 
 #if CP_VERSION_MAJOR > 6
 
 #define cpBodySetPos cpBodySetPosition
+#define cpBodyGetPos cpBodyGetPosition
 #define cpBoxShapeNew2(body, box) cpBoxShapeNew2((body), (box), 0.0)
 #define cpMomentForSegment(m, a, b) cpMomentForSegment((m), (a), (b), 0.0)
 #define cpBodyApplyImpulse cpBodyApplyImpulseAtLocalPoint
